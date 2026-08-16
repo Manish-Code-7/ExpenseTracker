@@ -20,8 +20,8 @@ export default async function ChatPage() {
           title="Assistant not configured"
           body="Set ANTHROPIC_API_KEY or GOOGLE_API_KEY in .env.local — see .env.local.example — and restart the dev server."
           action={
-            <Link href="/expenses/new" className="btn btn-primary">
-              Add an expense manually
+            <Link href="/transactions/new" className="btn btn-primary">
+              Add a transaction manually
             </Link>
           }
         />
@@ -37,7 +37,7 @@ export default async function ChatPage() {
         title="Assistant"
         subtitle="Describe a spend and it lands in your ledger."
         action={
-          <Link href="/expenses/new" className="btn btn-secondary shrink-0">
+          <Link href="/transactions/new" className="btn btn-secondary shrink-0">
             Form
           </Link>
         }

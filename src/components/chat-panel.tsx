@@ -138,10 +138,10 @@ export function ChatPanel({
             ) : (
               <p className="mt-4 text-sm text-ink-muted">
                 Add at least one{" "}
-                <Link href="/methods/new" className="underline">
-                  payment method
+                <Link href="/accounts/new" className="underline">
+                  account
                 </Link>{" "}
-                first — I need somewhere to put the spend.
+                first — I need somewhere to record it.
               </p>
             )}
           </div>

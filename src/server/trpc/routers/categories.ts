@@ -13,7 +13,7 @@ import type { Context } from "@/server/trpc/init";
 
 function refresh() {
   revalidatePath("/categories");
-  revalidatePath("/expenses");
+  revalidatePath("/transactions");
   revalidatePath("/dashboard");
 }
 
