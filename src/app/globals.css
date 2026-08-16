@@ -1,26 +1,306 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+  Glassmorphism. Frosted panels floating over an ambient colour field.
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  Two rules keep it from turning into soup:
+  1. The colour lives in the BACKDROP, not the panels. Panels are near-neutral
+     frosted glass, so a payment method's colour_tag is still the loudest thing
+     on any screen — that's what makes spend scannable by colour.
+  2. Text never sits on glass alone. Ink stays at full opacity so contrast holds
+     over whatever drifts underneath.
+*/
+
+:root {
+  /* the field the glass sits on */
+  --backdrop: #e9edf6;
+  --wash-1: #6366f1;
+  --wash-2: #22d3ee;
+  --wash-3: #f472b6;
+  --wash-alpha: 0.30;
+
+  /* glass */
+  --glass: rgb(255 255 255 / 0.58);
+  --glass-strong: rgb(255 255 255 / 0.78);
+  --glass-border: rgb(255 255 255 / 0.75);
+  --glass-hairline: rgb(15 23 42 / 0.08);
+  --glass-shadow: 0 8px 32px rgb(15 23 42 / 0.10), 0 1px 2px rgb(15 23 42 / 0.04);
+  --glass-sheen: inset 0 1px 0 rgb(255 255 255 / 0.65);
+  --blur: 18px;
+
+  /* ink */
+  --ink: #0f172a;
+  --ink-soft: #414c60;
+  --ink-muted: #6b7688;
+
+  --danger: #b42318;
+  --positive: #067647;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --backdrop: #070910;
+    --wash-1: #4f46e5;
+    --wash-2: #0891b2;
+    --wash-3: #be185d;
+    --wash-alpha: 0.38;
+
+    --glass: rgb(148 163 184 / 0.10);
+    --glass-strong: rgb(148 163 184 / 0.16);
+    --glass-border: rgb(255 255 255 / 0.12);
+    --glass-hairline: rgb(255 255 255 / 0.08);
+    --glass-shadow: 0 8px 32px rgb(0 0 0 / 0.45);
+    --glass-sheen: inset 0 1px 0 rgb(255 255 255 / 0.10);
+
+    --ink: #f1f4f9;
+    --ink-soft: #bcc5d4;
+    --ink-muted: #8b96a8;
+
+    --danger: #fda29b;
+    --positive: #6ce9a6;
   }
 }
 
+@theme inline {
+  --color-paper: var(--backdrop);
+  --color-card: var(--glass);
+  --color-line: var(--glass-hairline);
+  --color-line-strong: var(--glass-border);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-muted: var(--ink-muted);
+  --color-danger: var(--danger);
+  --color-positive: var(--positive);
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --radius-card: 18px;
+}
+
+html {
+  background: var(--backdrop);
+  color-scheme: light dark;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100dvh;
+  background: var(--backdrop);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---- the ambient field --------------------------------------------------
+   Three soft washes, fixed behind everything. Without something to refract,
+   frosted glass just reads as grey. */
+
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      42rem 42rem at 12% -8%,
+      color-mix(in oklab, var(--wash-1) calc(var(--wash-alpha) * 100%), transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      38rem 38rem at 92% 6%,
+      color-mix(in oklab, var(--wash-2) calc(var(--wash-alpha) * 100%), transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      46rem 46rem at 50% 108%,
+      color-mix(in oklab, var(--wash-3) calc(var(--wash-alpha) * 100%), transparent),
+      transparent 70%
+    );
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ---- glass primitives ---------------------------------------------------- */
+
+.glass,
+.card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--glass-shadow), var(--glass-sheen);
+  backdrop-filter: blur(var(--blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
+}
+
+.glass-strong {
+  background: var(--glass-strong);
+}
+
+.label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 0.375rem;
+}
+
+.field {
+  width: 100%;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 0.625rem 0.75rem;
+  font-size: 1rem;
+  color: var(--ink);
+  min-height: 44px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field::placeholder {
+  color: var(--ink-muted);
+}
+
+.field:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklab, var(--ink) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ink) 12%, transparent);
+}
+
+select.field {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-muted) 50%),
+    linear-gradient(135deg, var(--ink-muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% + 2px),
+    calc(100% - 13px) calc(50% + 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2.25rem;
+}
+
+/* Native pickers render dark-on-dark otherwise. */
+@media (prefers-color-scheme: dark) {
+  select.field option {
+    background: #131722;
+    color: var(--ink);
+  }
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--backdrop);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--ink) 28%, transparent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: var(--glass-strong);
+  border-color: var(--glass-border);
+  color: var(--ink);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--ink) 30%, transparent);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--ink);
+  background: color-mix(in oklab, var(--ink) 6%, transparent);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* ---- graceful degradation ------------------------------------------------ */
+
+/* Firefox without backdrop-filter, and anyone who asks for less transparency:
+   solid panels, same layout. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .card,
+  .field,
+  .btn-secondary {
+    background: color-mix(in oklab, var(--backdrop) 82%, white 18%);
+  }
+  @media (prefers-color-scheme: dark) {
+    .glass,
+    .card,
+    .field,
+    .btn-secondary {
+      background: color-mix(in oklab, var(--backdrop) 80%, white 8%);
+    }
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .card,
+  .field,
+  .btn-secondary {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: color-mix(in oklab, var(--backdrop) 82%, white 18%);
+  }
+  .ambient {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
