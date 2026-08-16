@@ -170,13 +170,27 @@ export const chatRouter = router({
             : await runGemini(context, history, input.message);
       } catch (error) {
         if (error instanceof TRPCError) throw error;
-        throw new TRPCError({
-          code: "BAD_GATEWAY",
-          message:
-            error instanceof Error
-              ? `The assistant failed: ${error.message}`
-              : "The assistant failed.",
-        });
+        const raw = error instanceof Error ? error.message : String(error);
+
+        // Provider limits are the most common failure and the one a user can
+        // act on, so say what happened rather than leaking the SDK's message.
+        if (/\b429\b|rate limit|quota|RESOURCE_EXHAUSTED/i.test(raw)) {
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message:
+              input.provider === "gemini"
+                ? "Gemini's free tier is out of requests for now — it allows 5 a minute and 20 a day. Wait a minute, switch to Claude, or enable billing in Google AI Studio."
+                : "Claude is rate limited right now. Wait a moment and try again.",
+          });
+        }
+        if (/\b401\b|\b403\b|api key|unauthor/i.test(raw)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `The ${input.provider === "gemini" ? "GOOGLE_API_KEY" : "ANTHROPIC_API_KEY"} was rejected. Check it in .env.local and restart.`,
+          });
+        }
+
+        throw new TRPCError({ code: "BAD_GATEWAY", message: `The assistant failed: ${raw}` });
       }
 
       if (turns.length > 0) {
