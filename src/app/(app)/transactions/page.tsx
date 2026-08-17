@@ -19,7 +19,12 @@ export default async function TransactionsPage() {
       <PageHeader
         title="Activity"
         subtitle="Everything that moved — spending, income, and money you just shifted around."
-        action={<Link href="/transactions/new" className="btn btn-primary shrink-0">Add</Link>}
+        action={
+          <div className="flex shrink-0 gap-2">
+            <Link href="/transactions/import" className="btn btn-secondary">Import</Link>
+            <Link href="/transactions/new" className="btn btn-primary">Add</Link>
+          </div>
+        }
       />
       <TransactionList
         accounts={overview.accounts.map((a) => ({ id: a.id, name: a.name }))}

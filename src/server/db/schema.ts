@@ -291,6 +291,10 @@ export const transactions = pgTable(
     merchant: text("merchant"),
     notes: text("notes"),
     transfer_id: uuid("transfer_id"),
+    // The bank's identity for this row, once known. Set on import, or written
+    // back when an imported row is matched to a manually-entered transaction —
+    // which is what makes the *next* import of that row exact rather than fuzzy.
+    external_ref: text("external_ref"),
     linked_transaction_id: uuid("linked_transaction_id"),
     // "user" or the model that proposed it, for auditability.
     created_by: text("created_by").default("user").notNull(),
@@ -320,5 +324,69 @@ export const transactions = pgTable(
     index("transactions_category_idx").on(t.user_id, t.category_id),
     index("transactions_transfer_idx").on(t.transfer_id),
     index("transactions_linked_idx").on(t.linked_transaction_id),
+    // One bank row can only ever be one transaction.
+    uniqueIndex("transactions_external_ref_unique")
+      .on(t.user_id, t.external_ref)
+      .where(sql`${t.external_ref} is not null`),
+  ],
+);
+
+export const ingestSourceEnum = pgEnum("ingest_source", ["STATEMENT", "EMAIL", "SMS"]);
+export const ingestStatusEnum = pgEnum("ingest_status", [
+  "PENDING",
+  "IMPORTED",
+  "IGNORED",
+  "DUPLICATE",
+]);
+
+/**
+ * Rows seen from outside the app, held for review before they touch the ledger.
+ *
+ * Everything imported lands here first — statements now, email and SMS later —
+ * because a wrong auto-import corrupts balances silently and is unpleasant to
+ * unwind. The user confirms; only then does the transaction service run.
+ *
+ * `external_ref` is unique per user, so importing the same statement twice is
+ * a no-op rather than a duplicate.
+ */
+export const ingestedItems = pgTable(
+  "ingested_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    user_id: ownerId(),
+    source: ingestSourceEnum("source").notNull(),
+    external_ref: text("external_ref").notNull(),
+    /** The account the statement belongs to, chosen at upload time. */
+    account_id: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** Verbatim, so a parsing bug can be re-run without re-uploading. */
+    raw_text: text("raw_text").notNull(),
+
+    parsed_amount: numeric("parsed_amount", { precision: 14, scale: 2, mode: "number" }).notNull(),
+    parsed_date: date("parsed_date").notNull(),
+    parsed_merchant: text("parsed_merchant"),
+
+    suggested_type: transactionTypeEnum("suggested_type").notNull(),
+    suggested_category_id: uuid("suggested_category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+
+    status: ingestStatusEnum("status").default("PENDING").notNull(),
+    /** The existing transaction this appears to duplicate, if any. */
+    matched_transaction_id: uuid("matched_transaction_id").references(() => transactions.id, {
+      onDelete: "set null",
+    }),
+    match_reason: text("match_reason"),
+    /** Set once the user confirms and the ledger row exists. */
+    transaction_id: uuid("transaction_id").references(() => transactions.id, {
+      onDelete: "set null",
+    }),
+
+    created_at: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("ingested_items_ref_unique").on(t.user_id, t.external_ref),
+    index("ingested_items_review_idx").on(t.user_id, t.status, t.parsed_date),
   ],
 );

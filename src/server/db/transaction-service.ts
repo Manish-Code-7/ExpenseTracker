@@ -36,6 +36,8 @@ export type TransactionInput = {
   merchant?: string | null;
   notes?: string | null;
   linked_transaction_id?: string | null;
+  /** The bank's identity for this row, when it came from an import. */
+  external_ref?: string | null;
   created_by?: string;
 };
 
@@ -225,6 +227,7 @@ export async function createTransaction(userId: string, input: TransactionInput)
         merchant: input.merchant ?? null,
         notes: input.notes ?? null,
         linked_transaction_id: input.linked_transaction_id ?? null,
+        external_ref: input.external_ref ?? null,
         // Both sides live on one row, so the id doubles as the group key.
         transfer_id: null,
         created_by: input.created_by ?? "user",
