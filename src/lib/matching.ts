@@ -204,6 +204,17 @@ const NOISE = new Set([
   "transfer", "trf", "inb", "chq", "bil", "www", "com", "ltd", "pvt", "india",
 ]);
 
+/**
+ * The words in a description that actually identify a merchant.
+ * Shared so a rule can never be keyed on something like "upi", which would
+ * match every payment ever made.
+ */
+export function significantWords(text: string): string[] {
+  return normalise(text)
+    .split(" ")
+    .filter((w) => w.length >= 3 && !NOISE.has(w) && !/^\d+$/.test(w));
+}
+
 /** Lowercase, strip punctuation and digit runs, collapse whitespace. */
 export function normalise(text: string): string {
   return text
@@ -220,8 +231,5 @@ export function normalise(text: string): string {
  * "UPI/SWIGGY*BLR/8842217/Payment" becomes "swiggy blr".
  */
 export function extractMerchant(description: string): string {
-  const cleaned = normalise(description)
-    .split(" ")
-    .filter((w) => w.length >= 3 && !NOISE.has(w) && !/^\d+$/.test(w));
-  return cleaned.slice(0, 3).join(" ");
+  return significantWords(description).slice(0, 3).join(" ");
 }

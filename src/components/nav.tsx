@@ -64,6 +64,7 @@ export function TopNav() {
     ...TABS.filter((t) => !t.primary),
     { href: "/recurring", label: "Recurring", icon: RepeatIcon, primary: false },
     { href: "/categories", label: "Categories", icon: TagIcon, primary: false },
+    { href: "/rules", label: "Rules", icon: TagIcon, primary: false },
   ];
 
   return (

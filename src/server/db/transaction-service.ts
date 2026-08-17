@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { db, type Tx } from "@/server/db";
 import { accounts, transactions } from "@/server/db/schema";
+import { learnFromTransaction } from "@/server/db/merchant-rules";
 import {
   looksDuplicate,
   movementsFor,
@@ -235,6 +236,8 @@ export async function createTransaction(userId: string, input: TransactionInput)
       .returning();
 
     await applyMovements(tx, movementsFor(row));
+    // Remember where this merchant belongs, so the next one files itself.
+    await learnFromTransaction(tx, userId, row.merchant, row.category_id, row.subcategory_id);
     return row;
   });
 }
@@ -284,6 +287,8 @@ export async function updateTransaction(
       .returning();
 
     await applyMovements(tx, movementsFor(row));
+    // A correction is a signal too — re-categorising teaches the rule.
+    await learnFromTransaction(tx, userId, row.merchant, row.category_id, row.subcategory_id);
     return row;
   });
 }

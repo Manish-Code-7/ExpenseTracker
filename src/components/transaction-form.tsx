@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { trpc, errorText } from "@/lib/trpc";
+import { QuickAddAccount } from "@/components/quick-add-account";
 import { transactionInput } from "@/lib/schemas";
 import { todayISO } from "@/lib/dates";
 import {
@@ -52,6 +53,9 @@ export function TransactionForm({
 }) {
   const router = useRouter();
   const [type, setType] = useState<TransactionType>(transaction?.type ?? initialType);
+  // Held locally so an account added mid-form is selectable without a reload.
+  const [accountList, setAccountList] = useState<AccountOption[]>(accounts);
+  const [adding, setAdding] = useState<"source" | "destination" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
@@ -72,10 +76,10 @@ export function TransactionForm({
   const cardPayment = type === "CREDIT_CARD_PAYMENT";
 
   // Only offer accounts that make sense for each side of this type.
-  const sourceOptions = accounts.filter((a) =>
+  const sourceOptions = accountList.filter((a) =>
     cashOnly || cardPayment ? a.type !== "CREDIT_CARD" && a.type !== "OTHER_LIABILITY" : true,
   );
-  const destinationOptions = accounts.filter((a) => {
+  const destinationOptions = accountList.filter((a) => {
     if (cashOnly) return a.type === "CASH";
     if (cardPayment) return a.type === "CREDIT_CARD";
     if (type === "TRANSFER") return a.type !== "CREDIT_CARD" && a.type !== "OTHER_LIABILITY";
@@ -190,12 +194,33 @@ export function TransactionForm({
             <label className="label" htmlFor="source">
               {cardPayment ? "Pay from" : cashOnly ? "Withdraw from" : "From account"}
             </label>
-            <select id="source" className="field" required value={source} onChange={(e) => setSource(e.target.value)}>
+            <select
+              id="source"
+              className="field"
+              required
+              value={source}
+              onChange={(e) => {
+                if (e.target.value === "__new") { setAdding("source"); return; }
+                setSource(e.target.value);
+              }}
+            >
               <option value="">Choose…</option>
               {sourceOptions.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
+              <option value="__new">+ Add an account…</option>
             </select>
+            {adding === "source" ? (
+              <QuickAddAccount
+                suggestType={cardPayment || cashOnly ? "BANK" : undefined}
+                onCancel={() => setAdding(null)}
+                onCreated={(a) => {
+                  setAccountList((prev) => [...prev, a]);
+                  setSource(a.id);
+                  setAdding(null);
+                }}
+              />
+            ) : null}
           </div>
         ) : null}
 
@@ -204,12 +229,33 @@ export function TransactionForm({
             <label className="label" htmlFor="destination">
               {cardPayment ? "Credit card" : cashOnly ? "Into cash" : "To account"}
             </label>
-            <select id="destination" className="field" required value={destination} onChange={(e) => setDestination(e.target.value)}>
+            <select
+              id="destination"
+              className="field"
+              required
+              value={destination}
+              onChange={(e) => {
+                if (e.target.value === "__new") { setAdding("destination"); return; }
+                setDestination(e.target.value);
+              }}
+            >
               <option value="">Choose…</option>
               {destinationOptions.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
+              <option value="__new">+ Add an account…</option>
             </select>
+            {adding === "destination" ? (
+              <QuickAddAccount
+                suggestType={cardPayment ? "CREDIT_CARD" : cashOnly ? "CASH" : undefined}
+                onCancel={() => setAdding(null)}
+                onCreated={(a) => {
+                  setAccountList((prev) => [...prev, a]);
+                  setDestination(a.id);
+                  setAdding(null);
+                }}
+              />
+            ) : null}
           </div>
         ) : null}
 

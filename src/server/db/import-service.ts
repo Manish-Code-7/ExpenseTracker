@@ -6,6 +6,7 @@ import { createTransaction } from "@/server/db/transaction-service";
 import { assignMatches, fingerprint, type Candidate, type Existing } from "@/lib/matching";
 import { parseStatementCsv } from "@/lib/statement-csv";
 import { addDaysISO } from "@/lib/dates";
+import { loadRules, matchRule } from "@/server/db/merchant-rules";
 import type { AccountType, TransactionType } from "@/lib/financial";
 
 /**
@@ -59,53 +60,6 @@ export type StageResult = {
 function classify(accountType: AccountType, outgoing: boolean): TransactionType {
   if (accountType === "CREDIT_CARD") return outgoing ? "EXPENSE" : "REFUND";
   return outgoing ? "EXPENSE" : "INCOME";
-}
-
-/**
- * Categories the user has previously chosen for this merchant.
- *
- * Most spending is repeat merchants, so their own history is a better and
- * cheaper classifier than anything else available — and it improves as they
- * use the app, with no model call.
- */
-async function learnedCategories(userId: string) {
-  const rows = await db
-    .select({
-      merchant: transactions.merchant,
-      category_id: transactions.category_id,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.user_id, userId),
-        sql`${transactions.merchant} is not null`,
-        sql`${transactions.category_id} is not null`,
-      ),
-    )
-    .groupBy(transactions.merchant, transactions.category_id)
-    .orderBy(sql`count(*) desc`);
-
-  // First writer wins, and rows arrive most-used first, so the winner is the
-  // category this merchant is usually filed under.
-  const byMerchant = new Map<string, string>();
-  for (const r of rows) {
-    const key = (r.merchant ?? "").toLowerCase().trim();
-    if (key && !byMerchant.has(key)) byMerchant.set(key, r.category_id!);
-  }
-  return byMerchant;
-}
-
-function suggestCategory(learned: Map<string, string>, merchant: string): string | null {
-  const key = merchant.toLowerCase().trim();
-  if (!key) return null;
-  if (learned.has(key)) return learned.get(key)!;
-  // Bank descriptions vary run to run ("swiggy blr" vs "swiggy"), so accept a
-  // containment match rather than requiring the string to be identical.
-  for (const [known, categoryId] of learned) {
-    if (known.includes(key) || key.includes(known)) return categoryId;
-  }
-  return null;
 }
 
 /**
@@ -225,8 +179,8 @@ export async function stageStatement(
   const { matched } = assignMatches(candidates, existing);
   const matchByRef = new Map(matched.map((m) => [m.candidateId, m]));
 
-  // 3. Suggest categories from the user's own history.
-  const learned = await learnedCategories(userId);
+  // 3. Suggest categories from the user's own rules.
+  const rules = await loadRules(userId);
 
   const values = incoming.map(({ row, ref }) => {
     const match = matchByRef.get(ref);
@@ -240,7 +194,7 @@ export async function stageStatement(
       parsed_date: row.date,
       parsed_merchant: row.merchant || null,
       suggested_type: classify(accountType, row.outgoing),
-      suggested_category_id: suggestCategory(learned, row.merchant),
+      suggested_category_id: matchRule(rules, row.merchant)?.category_id ?? null,
       status: match ? ("DUPLICATE" as const) : ("PENDING" as const),
       matched_transaction_id: match?.existingId ?? null,
       match_reason: match?.reason ?? null,

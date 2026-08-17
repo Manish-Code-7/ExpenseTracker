@@ -390,3 +390,43 @@ export const ingestedItems = pgTable(
     index("ingested_items_review_idx").on(t.user_id, t.status, t.parsed_date),
   ],
 );
+
+export const merchantRuleSourceEnum = pgEnum("merchant_rule_source", ["LEARNED", "MANUAL"]);
+
+/**
+ * "Whenever you see this merchant, file it here."
+ *
+ * Most spending is the same handful of merchants over and over, so the user's
+ * own past choices classify new records better than any model — and for free.
+ * Previously this was derived on the fly by aggregating transaction history;
+ * making it a table means the user can see what the app has inferred, correct
+ * a wrong guess, and have that correction stick.
+ *
+ * `pattern` is a normalised merchant fragment ("swiggy"), matched by
+ * containment, because bank descriptions vary between statements.
+ */
+export const merchantRules = pgTable(
+  "merchant_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    user_id: ownerId(),
+    pattern: text("pattern").notNull(),
+    category_id: uuid("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    subcategory_id: uuid("subcategory_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+    /** LEARNED came from the user's own entries; MANUAL they wrote deliberately. */
+    source: merchantRuleSourceEnum("source").default("LEARNED").notNull(),
+    /** How often it has been applied — used to rank competing patterns. */
+    hit_count: integer("hit_count").default(0).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+  },
+  (t) => [
+    check("merchant_rules_pattern_not_blank", sql`length(btrim(${t.pattern})) > 0`),
+    uniqueIndex("merchant_rules_unique").on(t.user_id, t.pattern),
+    index("merchant_rules_user_idx").on(t.user_id, t.hit_count),
+  ],
+);

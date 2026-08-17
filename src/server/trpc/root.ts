@@ -3,6 +3,7 @@ import { accountRouter } from "@/server/trpc/routers/account";
 import { accountsRouter } from "@/server/trpc/routers/accounts";
 import { dashboardRouter } from "@/server/trpc/routers/dashboard";
 import { importRouter } from "@/server/trpc/routers/import";
+import { rulesRouter } from "@/server/trpc/routers/rules";
 import { transactionsRouter } from "@/server/trpc/routers/transactions";
 import { categoriesRouter } from "@/server/trpc/routers/categories";
 import { chatRouter } from "@/server/trpc/routers/chat";
@@ -13,6 +14,7 @@ export const appRouter = router({
   accounts: accountsRouter,
   dashboard: dashboardRouter,
   import: importRouter,
+  rules: rulesRouter,
   transactions: transactionsRouter,
   categories: categoriesRouter,
   chat: chatRouter,
