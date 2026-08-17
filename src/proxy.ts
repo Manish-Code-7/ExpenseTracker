@@ -48,8 +48,12 @@ export const config = {
   matcher: [
     /*
      * Every path except static assets, the PWA files, image requests, and the
-     * auth endpoints themselves.
+     * endpoints that authenticate themselves.
+     *
+     * /api/sms is excluded deliberately: a phone forwarding an SMS cannot hold
+     * a session, so it carries a per-user token instead and the route checks
+     * that itself. Redirecting it to /login would make the bridge impossible.
      */
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|api/auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|api/auth|api/sms|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

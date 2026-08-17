@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { db } from "@/server/db";
 import { account as accountTable } from "@/server/db/schema";
+import { ALERT_SENDERS } from "@/lib/banks";
 
 /**
  * Reading bank alerts out of Gmail.
@@ -21,17 +22,10 @@ export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
  * query is the thing keeping this to what the feature actually needs.
  */
 export function buildQuery(sinceDays: number): string {
-  const senders = [
-    "alerts@hdfcbank.net", "alerts@hdfcbank.com",
-    "no-reply@sbi.co.in", "donotreply@sbi.co.in",
-    "credit_cards@icicibank.com", "no.reply@icicibank.com",
-    "alerts@axisbank.com", "cc.statements@axisbank.com",
-    "alerts@kotak.com", "noreply@kotak.com",
-  ];
-  const from = senders.map((s) => `from:${s}`).join(" OR ");
+  const from = ALERT_SENDERS.map((s) => `from:${s}`).join(" OR ");
   const subjects = [
     "subject:(transaction alert)", "subject:(debited)", "subject:(credited)",
-    "subject:(spent)", "subject:(payment)",
+    "subject:(spent)", "subject:(payment received)", "subject:(txn alert)",
   ].join(" OR ");
   return `newer_than:${sinceDays}d (${from} OR ${subjects})`;
 }

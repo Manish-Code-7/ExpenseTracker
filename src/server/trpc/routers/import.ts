@@ -9,7 +9,8 @@ import {
   stageStatement,
 } from "@/server/db/import-service";
 import { and, eq } from "drizzle-orm";
-import { account as accountTable } from "@/server/db/schema";
+import { account as accountTable, profiles } from "@/server/db/schema";
+import { randomBytes } from "node:crypto";
 
 const uuid = z.uuid("Pick a valid option.");
 
@@ -27,6 +28,29 @@ export const importRouter = router({
       linked: Boolean(linked),
       granted: Boolean(linked?.scope?.includes("gmail.readonly")),
     };
+  }),
+
+  /** The forwarder's endpoint and token, for setting up a phone. */
+  smsSetup: protectedProcedure.query(async ({ ctx }) => {
+    const [row] = await ctx.db
+      .select({ token: profiles.sms_token })
+      .from(profiles)
+      .where(eq(profiles.id, ctx.userId))
+      .limit(1);
+    return {
+      token: row?.token ?? null,
+      url: `${process.env.BETTER_AUTH_URL ?? ""}/api/sms`,
+    };
+  }),
+
+  /** Issue a new forwarder token, invalidating any previous one. */
+  rotateSmsToken: protectedProcedure.mutation(async ({ ctx }) => {
+    const token = randomBytes(24).toString("base64url");
+    await ctx.db
+      .insert(profiles)
+      .values({ id: ctx.userId, sms_token: token })
+      .onConflictDoUpdate({ target: profiles.id, set: { sms_token: token } });
+    return { token };
   }),
 
   /** Pull recent bank alerts from Gmail and stage anything new. */

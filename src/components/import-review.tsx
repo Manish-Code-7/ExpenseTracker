@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { trpc, errorText } from "@/lib/trpc";
 import { authClient } from "@/lib/auth-client";
+import { SmsSetup } from "@/components/sms-setup";
 import { moneyPrecise, formatDate } from "@/lib/format";
 import { typeLabel } from "@/lib/financial";
 import type { CategoryTree } from "@/lib/types";
@@ -31,10 +32,14 @@ export function ImportReview({
   accounts,
   categories,
   initialPending,
+  smsToken,
+  smsUrl,
 }: {
   accounts: AccountOption[];
   categories: CategoryTree[];
   initialPending: Staged[];
+  smsToken: string | null;
+  smsUrl: string;
 }) {
   const router = useRouter();
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
@@ -201,6 +206,8 @@ export function ImportReview({
           </button>
         )}
       </section>
+
+      <SmsSetup initialToken={smsToken} url={smsUrl} />
 
       {items.length === 0 ? (
         <div className="card px-5 py-10 text-center">

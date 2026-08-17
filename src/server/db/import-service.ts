@@ -418,3 +418,86 @@ export async function stageFromEmail(
   const result = await stageRecords(userId, accountId, "EMAIL", records);
   return { ...result, unreadable, scanned: messages.length };
 }
+
+/**
+ * Work out which account an alert is about, from the digits it quotes.
+ *
+ * Alerts almost always name the account — "a/c XX4321", "Card ending 8812" —
+ * and accounts store their last four, so the routing is usually unambiguous
+ * without asking. When it isn't, the caller falls back to a chosen default
+ * rather than picking one at random.
+ */
+export async function resolveAccountByLast4(
+  userId: string,
+  last4: string | null,
+): Promise<string | null> {
+  if (!last4) return null;
+
+  const rows = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.user_id, userId),
+        eq(accounts.is_active, true),
+        eq(accounts.account_number_last4, last4),
+      ),
+    );
+
+  // Two accounts sharing the last four digits is rare but possible; guessing
+  // between them would put money in the wrong place.
+  return rows.length === 1 ? rows[0].id : null;
+}
+
+/**
+ * Take one forwarded SMS and stage it if it is a transaction.
+ *
+ * Returns why nothing was staged when that is the case, so the webhook can
+ * answer honestly rather than silently accepting everything.
+ */
+export async function stageSms(
+  userId: string,
+  text: string,
+  sender: string,
+  fallbackAccountId: string | null,
+  receivedAt?: string,
+): Promise<{ staged: boolean; reason?: string; accountId?: string }> {
+  const { parseBankAlert, isNotATransaction } = await import("@/lib/bank-alert");
+
+  if (isNotATransaction(text)) return { staged: false, reason: "not a transaction" };
+
+  const alert = parseBankAlert(text);
+  if (!alert) return { staged: false, reason: "could not read the alert" };
+
+  const accountId =
+    (await resolveAccountByLast4(userId, alert.last4)) ?? fallbackAccountId;
+  if (!accountId) {
+    return {
+      staged: false,
+      reason: alert.last4
+        ? `no account ends in ${alert.last4}`
+        : "the alert names no account, and no default is set",
+    };
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const result = await stageRecords(userId, accountId, "SMS", [
+    {
+      date: alert.date ?? receivedAt?.slice(0, 10) ?? today,
+      amount: alert.amount,
+      outgoing: alert.outgoing,
+      description: alert.description,
+      merchant: alert.merchant,
+      // The message text itself is the identity — the same alert forwarded
+      // twice hashes the same and is ignored.
+      reference: null,
+      raw: text.slice(0, 2000),
+    },
+  ]);
+
+  return {
+    staged: result.fresh + result.likelyTracked > 0,
+    reason: result.alreadyImported > 0 ? "already seen" : undefined,
+    accountId,
+  };
+}

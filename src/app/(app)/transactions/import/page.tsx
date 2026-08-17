@@ -4,16 +4,20 @@ import { ImportReview } from "@/components/import-review";
 import { getCategoryTree } from "@/lib/queries";
 import { getAccountsOverview } from "@/server/db/analytics";
 import { listPending } from "@/server/db/import-service";
+import { eq } from "drizzle-orm";
+import { db } from "@/server/db";
+import { profiles } from "@/server/db/schema";
 import { requireUser } from "@/server/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function ImportPage() {
   const user = await requireUser();
-  const [overview, categories, pending] = await Promise.all([
+  const [overview, categories, pending, profileRow] = await Promise.all([
     getAccountsOverview(user.id),
     getCategoryTree(user.id),
     listPending(user.id),
+    db.select({ token: profiles.sms_token }).from(profiles).where(eq(profiles.id, user.id)).limit(1),
   ]);
 
   const accounts = overview.accounts.filter((a) => a.is_active);
@@ -41,6 +45,8 @@ export default async function ImportPage() {
         accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
         categories={categories}
         initialPending={pending}
+        smsToken={profileRow[0]?.token ?? null}
+        smsUrl={`${process.env.BETTER_AUTH_URL ?? ""}/api/sms`}
       />
     </>
   );

@@ -1,0 +1,2 @@
+ALTER TABLE "profiles" ADD COLUMN "sms_token" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "profiles_sms_token_unique" ON "profiles" USING btree ("sms_token") WHERE "profiles"."sms_token" is not null;

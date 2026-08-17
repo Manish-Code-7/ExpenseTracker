@@ -63,6 +63,12 @@ export const profiles = pgTable(
     // Free text so people can self-describe; the app suggests common options.
     gender: text("gender"),
     avatar_url: text("avatar_url"),
+    /**
+     * Secret used by the SMS forwarder on the user's phone. A phone cannot
+     * hold a session, so the webhook authenticates on this instead — it is
+     * scoped to ingestion only and can be rotated without touching the login.
+     */
+    sms_token: text("sms_token"),
     created_at: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
   },
@@ -79,6 +85,9 @@ export const profiles = pgTable(
       "profiles_dob_sane",
       sql`${t.date_of_birth} is null or ${t.date_of_birth} > date '1900-01-01'`,
     ),
+    uniqueIndex("profiles_sms_token_unique")
+      .on(t.sms_token)
+      .where(sql`${t.sms_token} is not null`),
   ],
 );
 
