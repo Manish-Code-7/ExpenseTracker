@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { trpc, errorText } from "@/lib/trpc";
+import { authClient } from "@/lib/auth-client";
 import { moneyPrecise, formatDate } from "@/lib/format";
 import { typeLabel } from "@/lib/financial";
 import type { CategoryTree } from "@/lib/types";
@@ -45,6 +46,24 @@ export function ImportReview({
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+
+  const gmail = trpc.import.gmailStatus.useQuery();
+  const syncEmail = trpc.import.syncEmail.useMutation({
+    onSuccess: (r) => {
+      setItems((prev) => [...prev, ...r.staged]);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        r.staged.filter((i) => i.status === "PENDING").forEach((i) => next.add(i.id));
+        return next;
+      });
+      const parts = [`${r.scanned} alerts read`, `${r.fresh} new`];
+      if (r.likelyTracked) parts.push(`${r.likelyTracked} look already tracked`);
+      if (r.alreadyImported) parts.push(`${r.alreadyImported} seen before`);
+      if (r.unreadable) parts.push(`${r.unreadable} couldn't be read`);
+      setSummary(parts.join(" · "));
+    },
+    onError: (e) => setError(errorText(e)),
+  });
 
   const stage = trpc.import.stageStatement.useMutation({
     onSuccess: (r) => {
@@ -105,7 +124,8 @@ export function ImportReview({
       return next;
     });
 
-  const busy = stage.isPending || confirm.isPending || ignore.isPending || reading;
+  const busy =
+    stage.isPending || confirm.isPending || ignore.isPending || syncEmail.isPending || reading;
 
   return (
     <div className="space-y-5">
@@ -140,6 +160,46 @@ export function ImportReview({
 
         {summary ? <p role="status" className="text-sm text-ink-soft">{summary}</p> : null}
         {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
+      </section>
+
+      <section className="card space-y-3 p-4">
+        <div>
+          <p className="font-display text-base font-semibold text-ink">From Gmail</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            Read your bank&rsquo;s transaction alerts instead of waiting for the
+            monthly statement. Only alert mail from the last month is read, and
+            nothing is added until you confirm it below.
+          </p>
+        </div>
+
+        {gmail.data?.granted ? (
+          <button
+            type="button"
+            className="btn btn-secondary w-full"
+            disabled={!accountId || busy}
+            onClick={() => {
+              setError(null);
+              setSummary(null);
+              syncEmail.mutate({ accountId, sinceDays: 30 });
+            }}
+          >
+            {syncEmail.isPending ? "Reading alerts…" : "Sync from Gmail"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary w-full"
+            onClick={() =>
+              authClient.signIn.social({
+                provider: "google",
+                scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+                callbackURL: "/transactions/import",
+              })
+            }
+          >
+            Connect Gmail
+          </button>
+        )}
       </section>
 
       {items.length === 0 ? (

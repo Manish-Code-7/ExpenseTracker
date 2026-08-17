@@ -5,13 +5,41 @@ import {
   confirmItems,
   ignoreItems,
   listPending,
+  stageFromEmail,
   stageStatement,
 } from "@/server/db/import-service";
+import { and, eq } from "drizzle-orm";
+import { account as accountTable } from "@/server/db/schema";
 
 const uuid = z.uuid("Pick a valid option.");
 
 export const importRouter = router({
   pending: protectedProcedure.query(({ ctx }) => listPending(ctx.userId)),
+
+  /** Whether Gmail reading has been granted, for the connect prompt. */
+  gmailStatus: protectedProcedure.query(async ({ ctx }) => {
+    const [linked] = await ctx.db
+      .select({ scope: accountTable.scope })
+      .from(accountTable)
+      .where(and(eq(accountTable.userId, ctx.userId), eq(accountTable.providerId, "google")))
+      .limit(1);
+    return {
+      linked: Boolean(linked),
+      granted: Boolean(linked?.scope?.includes("gmail.readonly")),
+    };
+  }),
+
+  /** Pull recent bank alerts from Gmail and stage anything new. */
+  syncEmail: protectedProcedure
+    .input(
+      z.object({
+        accountId: uuid,
+        sinceDays: z.number().int().min(1).max(180).default(30),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      stageFromEmail(ctx.userId, input.accountId, ctx.headers, input.sinceDays),
+    ),
 
   /** Parse and stage a statement. Nothing reaches the ledger yet. */
   stageStatement: protectedProcedure

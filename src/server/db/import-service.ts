@@ -62,14 +62,30 @@ function classify(accountType: AccountType, outgoing: boolean): TransactionType 
   return outgoing ? "EXPENSE" : "INCOME";
 }
 
+/** A record from any source, ready to be checked against the ledger. */
+export type IncomingRecord = {
+  date: string;
+  amount: number;
+  outgoing: boolean;
+  description: string;
+  merchant: string;
+  reference?: string | null;
+  raw: string;
+};
+
 /**
- * Parse a statement, work out what is new, and stage it for review.
- * Idempotent: uploading the same file twice stages nothing the second time.
+ * Check incoming records against the ledger and stage whatever is new.
+ *
+ * Shared by every source — statements now, email and SMS next — because the
+ * hard parts (recognising what we have already seen, spotting what the user
+ * entered by hand, suggesting a category) are identical no matter where the
+ * record came from. Only parsing differs.
  */
-export async function stageStatement(
+export async function stageRecords(
   userId: string,
   accountId: string,
-  csv: string,
+  source: "STATEMENT" | "EMAIL" | "SMS",
+  records: IncomingRecord[],
 ): Promise<StageResult> {
   const [account] = await db
     .select({ id: accounts.id, type: accounts.type })
@@ -80,21 +96,14 @@ export async function stageStatement(
   if (!account) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Account not found." });
   }
-
-  const parsed = parseStatementCsv(csv);
-  if (parsed.rows.length === 0) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message:
-        parsed.skipped[0]?.reason ??
-        "No transactions found in that file. Is it a bank statement export?",
-    });
+  if (records.length === 0) {
+    return { staged: [], alreadyImported: 0, likelyTracked: 0, fresh: 0, skipped: [] };
   }
 
   const accountType = account.type as AccountType;
 
-  // 1. Fingerprint every row, and drop the ones we have already seen.
-  const withRefs = parsed.rows.map((row) => ({
+  // 1. Fingerprint everything, and drop what we have already seen.
+  const withRefs = records.map((row) => ({
     row,
     ref: fingerprint({
       accountId,
@@ -129,11 +138,11 @@ export async function stageStatement(
       alreadyImported: withRefs.length,
       likelyTracked: 0,
       fresh: 0,
-      skipped: parsed.skipped.map((s) => ({ line: s.line, reason: s.reason })),
+      skipped: [],
     };
   }
 
-  // 2. Fuzzy-match what is left against transactions the user entered by hand.
+  // 2. Fuzzy-match the rest against transactions entered by hand.
   const dates = incoming.map((r) => r.row.date).sort();
   const existingRows = await db
     .select({
@@ -186,7 +195,7 @@ export async function stageStatement(
     const match = matchByRef.get(ref);
     return {
       user_id: userId,
-      source: "STATEMENT" as const,
+      source,
       external_ref: ref,
       account_id: accountId,
       raw_text: row.raw,
@@ -204,7 +213,6 @@ export async function stageStatement(
   const inserted = await db
     .insert(ingestedItems)
     .values(values)
-    // A concurrent upload of the same file must not error.
     .onConflictDoNothing({ target: [ingestedItems.user_id, ingestedItems.external_ref] })
     .returning();
 
@@ -213,8 +221,28 @@ export async function stageStatement(
     alreadyImported: withRefs.length - incoming.length,
     likelyTracked: inserted.filter((i) => i.status === "DUPLICATE").length,
     fresh: inserted.filter((i) => i.status === "PENDING").length,
-    skipped: parsed.skipped.map((s) => ({ line: s.line, reason: s.reason })),
+    skipped: [],
   };
+}
+
+/** Parse a bank CSV and stage whatever is new. */
+export async function stageStatement(
+  userId: string,
+  accountId: string,
+  csv: string,
+): Promise<StageResult> {
+  const parsed = parseStatementCsv(csv);
+  if (parsed.rows.length === 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        parsed.skipped[0]?.reason ??
+        "No transactions found in that file. Is it a bank statement export?",
+    });
+  }
+
+  const result = await stageRecords(userId, accountId, "STATEMENT", parsed.rows);
+  return { ...result, skipped: parsed.skipped.map((s) => ({ line: s.line, reason: s.reason })) };
 }
 
 function toStagedItem(row: typeof ingestedItems.$inferSelect): StagedItem {
@@ -341,4 +369,52 @@ export async function ignoreItems(userId: string, ids: string[]) {
     .where(and(eq(ingestedItems.user_id, userId), inArray(ingestedItems.id, ids)));
 
   return { ignored: rows.length };
+}
+
+/**
+ * Read recent bank alerts from Gmail and stage whatever is new.
+ *
+ * Alerts the parser cannot read confidently are counted and reported rather
+ * than guessed at — a wrong amount on someone's ledger is worse than a row
+ * they enter themselves.
+ */
+export async function stageFromEmail(
+  userId: string,
+  accountId: string,
+  headers: Headers,
+  sinceDays = 30,
+): Promise<StageResult & { unreadable: number; scanned: number }> {
+  const { fetchBankMail } = await import("@/server/chat/gmail");
+  const { parseBankAlert, isNotATransaction } = await import("@/lib/bank-alert");
+
+  const messages = await fetchBankMail(userId, headers, sinceDays);
+
+  const records: IncomingRecord[] = [];
+  let unreadable = 0;
+
+  for (const message of messages) {
+    if (isNotATransaction(message.text)) continue;
+
+    const alert = parseBankAlert(message.text);
+    if (!alert) {
+      unreadable++;
+      continue;
+    }
+
+    records.push({
+      // The alert's own date is more accurate than when the mail arrived,
+      // but the mail's date is a sound fallback.
+      date: alert.date ?? message.date,
+      amount: alert.amount,
+      outgoing: alert.outgoing,
+      description: alert.description,
+      merchant: alert.merchant,
+      // Gmail's message id makes re-syncing the same alert a no-op.
+      reference: `gmail:${message.id}`,
+      raw: message.text.slice(0, 2000),
+    });
+  }
+
+  const result = await stageRecords(userId, accountId, "EMAIL", records);
+  return { ...result, unreadable, scanned: messages.length };
 }

@@ -27,7 +27,7 @@ export async function createContext() {
       })
     : db;
 
-  return { db: scopedDb, session };
+  return { db: scopedDb, session, headers: headerList };
 }
 
 export type Context = Awaited<ReturnType<typeof createContext>>;

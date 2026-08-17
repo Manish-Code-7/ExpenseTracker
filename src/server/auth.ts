@@ -44,6 +44,11 @@ export const auth = betterAuth({
           google: {
             clientId: process.env.GOOGLE_CLIENT_ID,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            // Reading bank alerts needs Gmail access, but sign-in should not
+            // demand it — so the scope is requested separately, from the
+            // import screen, only if the user wants that feature.
+            accessType: "offline",
+            prompt: "consent",
           },
         }
       : undefined,

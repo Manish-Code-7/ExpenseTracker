@@ -66,7 +66,15 @@ export type Existing = {
   amount: number;
   merchant: string;
   type: TransactionType;
-  /** Already matched to some import; cannot be claimed again. */
+  /**
+   * Already carries a bank reference from some earlier import.
+   *
+   * Not a reason to skip it: the same spend can reach us from two sources —
+   * a card alert by email on the day, then the statement a month later — and
+   * those carry different references, so the statement row must still be able
+   * to recognise the transaction the email created. It only makes the row a
+   * slightly weaker candidate than an untouched manual entry.
+   */
   hasReference: boolean;
 };
 
@@ -118,7 +126,6 @@ export function merchantSimilarity(a: string, b: string): number {
  * scored, because only they are genuinely uncertain.
  */
 export function scorePair(candidate: Candidate, existing: Existing): Match | null {
-  if (existing.hasReference) return null;
   if (candidate.type !== existing.type) return null;
   if (existing.accountId !== candidate.accountId) return null;
   if (round2(existing.amount) !== round2(candidate.amount)) return null;
@@ -132,7 +139,10 @@ export function scorePair(candidate: Candidate, existing: Existing): Match | nul
 
   // Weighted toward date: an exact amount on the right day is already
   // compelling, and bank descriptions are too noisy to lean on merchant.
-  const score = round2(dateScore * 0.6 + merchantScore * 0.4);
+  // A row that already came from an import is a slightly weaker candidate than
+  // one the user typed, so when both fit, the manual entry is claimed first.
+  const base = dateScore * 0.6 + merchantScore * 0.4;
+  const score = round2(existing.hasReference ? base * 0.95 : base);
   if (score < MIN_SCORE) return null;
 
   const reason =
